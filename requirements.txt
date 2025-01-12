@@ -1,0 +1,6 @@
+fastapi 
+pydantic 
+pandas
+pingouin
+typing
+uvicorn
