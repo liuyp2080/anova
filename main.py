@@ -13,50 +13,52 @@ class RepeatedMeasuresAnovaInput(BaseModel):
     time_column: List[object]
     subject_column: List[int]
 
-@app.post("/homoscedasticity")
-def homoscedasticity(input_data: RepeatedMeasuresAnovaInput):
-    data_frame = pd.DataFrame({
-        'value': input_data.value_column,
-        'time': input_data.time_column,
-        'subject': input_data.subject_column
-    })
-    results = pg.homoscedasticity(data=data_frame, dv='value', within='time', subject='subject')
-    output = results.to_dict(orient="records")
-    return json.dumps(output, allow_nan=True)
-@app.post("/one_way_welch_anova")
-def one_way_welch_anova(input_data: RepeatedMeasuresAnovaInput):
-    data_frame = pd.DataFrame({ 
-        'value': input_data.value_column,   
-        'time': input_data.time_column,
-        'subject': input_data.subject_column
-    })
-    results = pg.welch_anova(data=data_frame, dv='value', within='time', subject='subject')
-    output = results.to_dict(orient="records")
-    return json.dumps(output, allow_nan=True)
-@app.post("/one_way_anova")
-def one_way_anova(input_data: RepeatedMeasuresAnovaInput):
-    data_frame = pd.DataFrame({ 
-        'value': input_data.value_column,   
-        'time': input_data.time_column,
-        'subject': input_data.subject_column
-    })
-    results = pg.anova(data=data_frame, dv='value', between='time', subject='subject')
-    output = results.to_dict(orient="records")
-    return json.dumps(output, allow_nan=True)
+
 @app.post("/sphericity_test")
 def sphericity_test(input_data: RepeatedMeasuresAnovaInput):
+    """
+    Perform a Mauchly's test of sphericity.
+
+    Args:
+        input_data: RepeatedMeasuresAnovaInput
+
+    Returns:
+        A JSON string containing the results of the sphericity test
+    """
     data_frame = pd.DataFrame({
         'value': input_data.value_column,
         'time': input_data.time_column,
         'subject': input_data.subject_column
     })
-
-    results = pg.sphericity(data=data_frame, dv='value', within='time', subject='subject')
-    output = results.to_dict(orient="records")
-    return json.dumps(output, allow_nan=True)
+    try:
+        spher, W, chisq, dof, pval  = pg.sphericity(data=data_frame, dv='value', within='time', subject='subject')
+        output = {
+            'sphericity': spher,
+            'W': W,
+            'chisq': chisq,
+            'dof': dof,
+            'pval': pval
+        }
+        return json.dumps(output, allow_nan=True)
+    except Exception as e:
+        return str(e)
 
 @app.post("/epsilon_correct_factor")
 def epsilon_correct_factor(input_data: RepeatedMeasuresAnovaInput):
+    """
+    Calculate epsilon correction factors (Greenhouse-Geisser, Huynh-Feldt, and Lower-bound)
+    for repeated measures ANOVA.
+
+    Args:
+        input_data: RepeatedMeasuresAnovaInput containing columns for values, time points, and subjects.
+
+    Returns:
+        A JSON string with epsilon correction factors:
+        - 'gg': Greenhouse-Geisser correction
+        - 'hf': Huynh-Feldt correction
+        - 'lb': Lower-bound correction
+    """
+
     data_frame = pd.DataFrame({
         'value': input_data.value_column,
         'time': input_data.time_column,
@@ -77,8 +79,6 @@ def epsilon_correct_factor(input_data: RepeatedMeasuresAnovaInput):
 
 @app.post("/two_way_repeated_measures_anova")
 def two_way_repeated_measures_anova(input_data: RepeatedMeasuresAnovaInput):
-
-    # Convert input data to a pandas DataFrame
     """
     Perform a repeated measures ANOVA. if the group column is not None, perform a mixed ANOVA, else perform a repeated measures ANOVA
 
@@ -101,6 +101,15 @@ def two_way_repeated_measures_anova(input_data: RepeatedMeasuresAnovaInput):
                 dv='value',
                 within='time',
                 between='group',
+                subject='subject',
+                correction= True
+            )
+        output = results.to_dict(orient="records")
+    else:
+        results = pg.rm_anova(
+                data=df,
+                dv='value',
+                within='time',
                 subject='subject',
                 correction= True
             )
