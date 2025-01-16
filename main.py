@@ -39,7 +39,7 @@ def sphericity_test(input_data: RepeatedMeasuresAnovaInput):
             'dof': dof,
             'pval': pval
         }
-        return json.dumps(output, allow_nan=True)
+        return json.dumps(output, allow_nan=True,ensure_ascii=False)
     except Exception as e:
         return str(e)
 
@@ -75,7 +75,7 @@ def epsilon_correct_factor(input_data: RepeatedMeasuresAnovaInput):
         'lb': lb
     }
     
-    return json.dumps(result, allow_nan=True)
+    return json.dumps(result, allow_nan=True,ensure_ascii=False)
 
 @app.post("/two_way_repeated_measures_anova")
 def two_way_repeated_measures_anova(input_data: RepeatedMeasuresAnovaInput):
@@ -115,7 +115,7 @@ def two_way_repeated_measures_anova(input_data: RepeatedMeasuresAnovaInput):
             )
         output = results.to_dict(orient="records")
 
-    return json.dumps(output, allow_nan=True)
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
 
 #paired_test
 @app.post("/paired_test")
@@ -153,8 +153,54 @@ def pairwise_test(input_data: RepeatedMeasuresAnovaInput):
         )
 
     output = paired_test_results.to_dict(orient="records")
-    return json.dumps(output, allow_nan=True)
- 
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+@app.post("/power_rm_anova")
+def power_rm_anova(input_data: RepeatedMeasuresAnovaInput) -> str:
+    """Perform power analysis for a repeated measures ANOVA.
+
+    Args:
+        input_data: RepeatedMeasuresAnovaInput containing columns for values, time points, and subjects.
+
+    Returns:
+        A JSON string containing the results of the power analysis:
+        - 'power': the power of the test
+        - 'n at 80% power': the sample size needed for 80% power
+    """
+    df = pd.DataFrame({
+        'value': input_data.value_column,
+        'time': input_data.time_column,
+        'subject': input_data.subject_column
+    })
+
+    aov = pg.rm_anova(
+        data=df,
+        dv='value',
+        within='time',
+        subject='subject',
+        effsize='n2'
+    )
+    num_conditions = df['time'].nunique()
+    num_subjects = df['subject'].nunique()
+    power = pg.power_rm_anova(
+        eta_squared=aov['n2'][0],
+        m=num_conditions,
+        n=num_subjects,
+        alpha=0.05,
+        epsilon=aov['eps'][0]
+    )
+    n_at_80_power = pg.power_rm_anova(
+        eta_squared=aov['n2'][0],
+        m=num_conditions,
+        power=0.8,
+        alpha=0.2,
+        epsilon=aov['eps'][0]
+    )
+    output = {
+        'power': power,
+        'n at 80% power': n_at_80_power
+    }
+    return json.dumps(output, allow_nan=True, ensure_ascii=False)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, port=8000)
