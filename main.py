@@ -3,15 +3,16 @@ from pydantic import BaseModel
 import pandas as pd
 import pingouin as pg
 import json
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
+
 
 app = FastAPI()
 
 # t test need value and group, anova need value and group, repeated measures anova need value, time, and subject
 class RepeatedMeasuresAnovaInput(BaseModel):
-    value_column: List[int]
-    group_column: Optional[List[object]]=None
-    time_column: Optional[List[object]]=None
+    value_column: List[Union[int, float]]
+    group_column: Optional[List[str]]=None
+    time_column: Optional[List[str]]=None
     subject_column: Optional[List[int]] = None
     paired: Optional[bool] = False
 
@@ -236,7 +237,6 @@ def power_t_test(input_data: RepeatedMeasuresAnovaInput) -> str:
     
     return json.dumps(output, allow_nan=True, ensure_ascii=False)
 
-
 #--------------------repreat measures anova-----------------------------
 @app.post("/sphericity_test")
 def sphericity_test(input_data: RepeatedMeasuresAnovaInput):
@@ -315,30 +315,60 @@ def two_way_repeated_measures_anova(input_data: RepeatedMeasuresAnovaInput):
     df = pd.DataFrame({
         'value': input_data.value_column,
         'time': input_data.time_column,
+        'subject': input_data.subject_column,
+        'group':input_data.group_column
+    })
+    
+    results = pg.mixed_anova(
+            data=df,
+            dv='value',
+            within='time',
+            between='group',
+            subject='subject',
+            correction= True
+        )
+    output = results.to_dict(orient="records")
+
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
+#one-way anova
+@app.post("/one_way_anova")
+def one_way_anova(input_data: RepeatedMeasuresAnovaInput):
+    """
+    Perform a one-way repeated measures ANOVA.
+
+    Args:
+        input_data: RepeatedMeasuresAnovaInput
+
+    Returns:
+        A JSON string containing the results of the ANOVA
+    """
+    df = pd.DataFrame({
+        'value': input_data.value_column,
+        'time': input_data.time_column,
+       'subject': input_data.subject_column
+    })
+    results = pg.rm_anova(
+                data=df,
+                dv='value',
+                within='time',
+                subject='subject',
+                correction= True
+            )
+    output = results.to_dict(orient="records")
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
+# non-parametric friedman test
+@app.post("/friedman_test")
+def friedman_test(input_data:RepeatedMeasuresAnovaInput):
+    data_frame = pd.DataFrame({
+        'value': input_data.value_column,
+        'time': input_data.time_column,
         'subject': input_data.subject_column
     })
     
-    if input_data.group_column is not None:
-        df['group'] = input_data.group_column
-        results = pg.mixed_anova(
-                data=df,
-                dv='value',
-                within='time',
-                between='group',
-                subject='subject',
-                correction= True
-            )
-        output = results.to_dict(orient="records")
-    else:
-        results = pg.rm_anova(
-                data=df,
-                dv='value',
-                within='time',
-                subject='subject',
-                correction= True
-            )
-        output = results.to_dict(orient="records")
-
+    results=pg.friedman(data=data_frame, dv='value', within='time', subject='subject',method='f')
+    output = results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True,ensure_ascii=False)
 
 #paired_test
@@ -378,6 +408,7 @@ def pairwise_test(input_data: RepeatedMeasuresAnovaInput):
 
     output = paired_test_results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
 @app.post("/power_rm_anova")
 def power_rm_anova(input_data: RepeatedMeasuresAnovaInput) -> str:
     """Perform power analysis for a repeated measures ANOVA.
@@ -424,6 +455,122 @@ def power_rm_anova(input_data: RepeatedMeasuresAnovaInput) -> str:
         'n at 80% power': n_at_80_power
     }
     return json.dumps(output, allow_nan=True, ensure_ascii=False)
+
+#----------------------卡方----------------------------------
+class wideFormatInput(BaseModel):
+    x_column: List[Union[int,str]]
+    y_column: List[Union[int,str]]
+
+@app.post("/chi_square_independence")
+def chi_square_independence (input_data: wideFormatInput):
+    """
+    Perform a chi-square test.
+
+    Args:
+        input_data: wideFormatAnovaInput
+
+    Returns:
+        A JSON string containing the results of the chi-square test
+    """
+    data_frame = pd.DataFrame({
+        'x': input_data.x_column,
+        'y': input_data.y_column
+    })
+
+    _,_,stats = pg.chi2_independence(data=data_frame, x='x', y='y')
+    output = stats.to_dict(orient="records")
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
+#mcnemar test
+@app.post("/mcnemar_test")
+def mcnemar_test(input_data: wideFormatInput):
+    """
+    Perform a McNemar test.
+
+    Args:
+        input_data: wideFormatInput
+
+    Returns:
+        A JSON string containing the results of the McNemar test
+    """
+    data_frame = pd.DataFrame({
+        'x': input_data.x_column,
+        'y': input_data.y_column
+    })
+    _,stats = pg.chi2_mcnemar(data=data_frame, x='x', y='y')
+    output = stats.to_dict(orient="records")
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
+#power of chi square
+@app.post("/power_chi_square")
+def power_chi_square(input_data: wideFormatInput):
+    """
+    Calculate the power of a chi-square test.
+
+    Args:
+        input_data: wideFormatInput
+
+    Returns:
+        A JSON string containing the power of the chi-square test.
+    """
+    data_frame = pd.DataFrame({
+        'x': input_data.x_column,
+        'y': input_data.y_column
+    })
+    _,_,stats = pg.chi2_independence(data=data_frame, x='x', y='y')
+    w=stats['cramer'].iloc[0]
+    n=len(input_data.x_column)
+    dof=1
+    power=pg.power_chi2(dof=dof, w=w, n=n)
+    n_80=pg.power_chi2(dof=dof, w=w, power=0.8)
+    output = {
+        'power': power,
+        'n at 80% power': n_80
+    }
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
+#------------------------------logistic regression-------------------------
+class multivariableInput(BaseModel):
+    x_column: Dict[str,List[Union[int,str,float]]]
+    y_column: Dict[str,List[Union[int,str,float]]]
+
+@app.post("/multivariable_logistic_regression")
+def multivariable_logistic_regression(input_data: multivariableInput):
+    """
+    Perform a multivariable logistic regression.
+
+    Args:
+        input_data: multivariableInput
+
+    Returns:
+        A JSON string containing the results of the multivariable logistic regression
+    """
+    predictors_df = pd.DataFrame(input_data.x_column)
+    response_df = pd.DataFrame(input_data.y_column)
+    results = pg.logistic_regression(
+        predictors_df, response_df.values.flatten(), as_dataframe=True,penalty= None
+    )
+    output=results.to_dict(orient="records")
+    return json.dumps(output, allow_nan=True, ensure_ascii=False)
+
+#multivariate linear regression
+@app.post("/multivariate_linear_regression")
+def multivariate_linear_regression(input_data: multivariableInput):
+    """
+    Perform a multivariate linear regression.
+
+    Args:
+        input_data: multivariableInput
+
+    Returns:
+        A JSON string containing the results of the multivariate linear regression
+    """
+    predictors_df = pd.DataFrame(input_data.x_column)
+    response_df = pd.DataFrame(input_data.y_column)    
+    results = pg.linear_regression(predictors_df, response_df.values.flatten(), add_intercept=True, as_dataframe=True)
+    output=results.to_dict(orient="records")
+    return json.dumps(output, allow_nan=True, ensure_ascii=False)
+
 
 if __name__ == "__main__":
     import uvicorn
