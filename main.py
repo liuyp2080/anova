@@ -4,6 +4,7 @@ import pandas as pd
 import pingouin as pg
 import json
 from typing import List, Optional, Union, Dict
+from scipy.stats import fisher_exact
 
 
 app = FastAPI()
@@ -409,6 +410,35 @@ def pairwise_test(input_data: RepeatedMeasuresAnovaInput):
     output = paired_test_results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True,ensure_ascii=False)
 
+@app.post("/paired_test_friedman")
+def pairwise_test(input_data: RepeatedMeasuresAnovaInput):
+    """
+    Perform a pairwise test (e.g. Wilcoxon signed-rank test) between each pair of time points.
+
+    Args:
+        input_data: RepeatedMeasuresAnovaInput
+
+    Returns:
+        A JSON string containing the results of the pairwise tests
+    """
+    data_frame = pd.DataFrame({
+        'value': input_data.value_column,
+        'time': input_data.time_column,
+        'subject': input_data.subject_column
+    })
+
+        
+    paired_test_results = pg.pairwise_tests(
+        data=data_frame,
+        dv='value',
+        within='time',
+        subject='subject',
+        parametric=False
+    )
+
+    output = paired_test_results.to_dict(orient="records")
+    return json.dumps(output, allow_nan=True,ensure_ascii=False)
+
 @app.post("/power_rm_anova")
 def power_rm_anova(input_data: RepeatedMeasuresAnovaInput) -> str:
     """Perform power analysis for a repeated measures ANOVA.
@@ -529,10 +559,34 @@ def power_chi_square(input_data: wideFormatInput):
     }
     return json.dumps(output, allow_nan=True,ensure_ascii=False)
 
+
+@app.post("/fisher_exact_test")
+def fisher_exact_test(input_data: wideFormatInput):
+    """
+    Perform a Fisher's exact test.
+
+    Args:
+        input_data: wideFormatInput
+
+    Returns:
+        A JSON string containing the results of the Fisher's exact test
+    """
+    data_frame = pd.DataFrame({
+        'x': input_data.x_column,
+        'y': input_data.y_column
+    })
+    contingency_table = pd.crosstab(data_frame['x'], data_frame['y'])
+    odds_ratio, p_value = fisher_exact(contingency_table)
+    output = {
+        'odds_ratio': odds_ratio,
+        'p_value': p_value
+    }
+    return json.dumps(output, allow_nan=True, ensure_ascii=False)
+
 #------------------------------logistic regression-------------------------
 class multivariableInput(BaseModel):
-    x_column: Dict[str,List[Union[int,str,float]]]
-    y_column: Dict[str,List[Union[int,str,float]]]
+    x_column: List[List[Union[int,str,float]]]
+    y_column: List[Union[int,str,float]]
 
 @app.post("/multivariable_logistic_regression")
 def multivariable_logistic_regression(input_data: multivariableInput):
@@ -545,10 +599,10 @@ def multivariable_logistic_regression(input_data: multivariableInput):
     Returns:
         A JSON string containing the results of the multivariable logistic regression
     """
-    predictors_df = pd.DataFrame(input_data.x_column)
-    response_df = pd.DataFrame(input_data.y_column)
+    predictors_df = pd.DataFrame(input_data.x_column).T
+    response_df = pd.DataFrame(input_data.y_column,columns=['target'])
     results = pg.logistic_regression(
-        predictors_df, response_df.values.flatten(), as_dataframe=True,penalty= None
+        predictors_df, response_df['target'], as_dataframe=True,penalty= None
     )
     output=results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True, ensure_ascii=False)
@@ -565,9 +619,9 @@ def multivariate_linear_regression(input_data: multivariableInput):
     Returns:
         A JSON string containing the results of the multivariate linear regression
     """
-    predictors_df = pd.DataFrame(input_data.x_column)
-    response_df = pd.DataFrame(input_data.y_column)    
-    results = pg.linear_regression(predictors_df, response_df.values.flatten(), add_intercept=True, as_dataframe=True)
+    predictors_df = pd.DataFrame(input_data.x_column).T
+    response_df = pd.DataFrame(input_data.y_column,columns=['target'])    
+    results = pg.linear_regression(predictors_df, response_df['target'], add_intercept=True, as_dataframe=True)
     output=results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True, ensure_ascii=False)
 
