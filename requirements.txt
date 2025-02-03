@@ -4,3 +4,4 @@ pandas
 pingouin
 typing
 uvicorn
+scipy
