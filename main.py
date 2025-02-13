@@ -587,6 +587,8 @@ def fisher_exact_test(input_data: wideFormatInput):
 class multivariableInput(BaseModel):
     x_column: List[List[Union[int,str,float]]]
     y_column: List[Union[int,str,float]]
+    x_column_name: List[str]
+    y_column_name: str = "target"
 
 @app.post("/multivariable_logistic_regression")
 def multivariable_logistic_regression(input_data: multivariableInput):
@@ -599,10 +601,10 @@ def multivariable_logistic_regression(input_data: multivariableInput):
     Returns:
         A JSON string containing the results of the multivariable logistic regression
     """
-    predictors_df = pd.DataFrame(input_data.x_column).T
-    response_df = pd.DataFrame(input_data.y_column,columns=['target'])
+    predictors_df = pd.DataFrame({name: values for name, values in zip(input_data.x_column_name, zip(*input_data.x_column))})
+    response_df = pd.DataFrame(input_data.y_column,columns=[input_data.y_column_name])
     results = pg.logistic_regression(
-        predictors_df, response_df['target'], as_dataframe=True,penalty= None
+        predictors_df, response_df[input_data.y_column_name], as_dataframe=True,penalty= None
     )
     output=results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True, ensure_ascii=False)
@@ -619,9 +621,9 @@ def multivariate_linear_regression(input_data: multivariableInput):
     Returns:
         A JSON string containing the results of the multivariate linear regression
     """
-    predictors_df = pd.DataFrame(input_data.x_column).T
-    response_df = pd.DataFrame(input_data.y_column,columns=['target'])    
-    results = pg.linear_regression(predictors_df, response_df['target'], add_intercept=True, as_dataframe=True)
+    predictors_df = pd.DataFrame({name: values for name, values in zip(input_data.x_column_name, zip(*input_data.x_column))})
+    response_df = pd.DataFrame(input_data.y_column,columns=[input_data.y_column_name])    
+    results = pg.linear_regression(predictors_df, response_df[input_data.y_column_name], add_intercept=True, as_dataframe=True)
     output=results.to_dict(orient="records")
     return json.dumps(output, allow_nan=True, ensure_ascii=False)
 
