@@ -5,7 +5,7 @@ import pingouin as pg
 import json
 from typing import List, Optional, Union, Dict
 from scipy.stats import fisher_exact
-
+import ast
 
 app = FastAPI()
 
@@ -585,7 +585,7 @@ def fisher_exact_test(input_data: wideFormatInput):
 
 #------------------------------logistic regression-------------------------
 class multivariableInput(BaseModel):
-    x_column: List[List[Union[int,str,float]]]
+    x_column: List[Union[str]]
     y_column: List[Union[int,str,float]]
     x_column_name: List[str]
     y_column_name: str = "target"
@@ -601,7 +601,7 @@ def multivariable_logistic_regression(input_data: multivariableInput):
     Returns:
         A JSON string containing the results of the multivariable logistic regression
     """
-    predictors_df = pd.DataFrame({name: values for name, values in zip(input_data.x_column_name, zip(*input_data.x_column))})
+    predictors_df = pd.DataFrame({name: [ast.literal_eval(values)[i] for values in input_data.x_column] for i, name in enumerate(input_data.x_column_name)})
     response_df = pd.DataFrame(input_data.y_column,columns=[input_data.y_column_name])
     results = pg.logistic_regression(
         predictors_df, response_df[input_data.y_column_name], as_dataframe=True,penalty= None
@@ -621,7 +621,7 @@ def multivariate_linear_regression(input_data: multivariableInput):
     Returns:
         A JSON string containing the results of the multivariate linear regression
     """
-    predictors_df = pd.DataFrame({name: values for name, values in zip(input_data.x_column_name, zip(*input_data.x_column))})
+    predictors_df = pd.DataFrame({name: [ast.literal_eval(values)[i] for values in input_data.x_column] for i, name in enumerate(input_data.x_column_name)})
     response_df = pd.DataFrame(input_data.y_column,columns=[input_data.y_column_name])    
     results = pg.linear_regression(predictors_df, response_df[input_data.y_column_name], add_intercept=True, as_dataframe=True)
     output=results.to_dict(orient="records")
